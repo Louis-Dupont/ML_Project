@@ -42,6 +42,10 @@ def get_name(year, state, data_set_= data_set):
 def get_list_states(data_set_ = data_set):
     return data_set["State"].drop_duplicates()
 
+# OUTPUT : List of names of size length_
+def get_list_names(length_=-1, data_set_ = data_set):
+    return data_set_.pivot_table(index = "Year", columns="Name", values=criteria).sum(axis=0).sort_values(ascending=False).index[:length_]
+
 
 # INPUT (optional) unique = False => ith name is the most popular in the (1910+i)th year
 #       (optional) period = [a,b] => only select the popular names from this period
