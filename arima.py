@@ -13,9 +13,11 @@ from statsmodels.tsa.stattools import adfuller, acf, pacf
 from statsmodels.tsa.arima_model import ARIMA
 import os
 import csv
+import datetime
+import sys
 
-#import warnings
-#warnings.filterwarnings("ignore") 
+import warnings
+warnings.filterwarnings("ignore") 
 
 
 # In[2]:
@@ -70,9 +72,7 @@ def originalScaleOrder2(timeseries):
 
 # In[56]:
 
-def model(dataM,save_path):
-
-    transformation="log"
+def arimaModel(dataM,save_path,transformation):
     _pow = np.power
     if transformation=="log":
         trans_func = np.log
@@ -83,7 +83,10 @@ def model(dataM,save_path):
     elif transformation=="curt": #cube root
         trans_func = lambda x : _pow(x, 1/3)
         trans_inv = lambda x : _pow(x, 3)
-    
+    elif transformation=="square":
+        trans_func= lambda x : _pow(x, 2)
+        trans_inv = np.sqrt
+        
     ts_log = trans_func(dataM["Occurence"])
     
     #plt.plot(dataM["Year"],ts_log, color = 'blue',label="Transformation")
@@ -181,24 +184,46 @@ def model(dataM,save_path):
     
     # In[49]:
     
+    met="css"
     
-    try:
-        model = ARIMA(ts_log, order=(p, d, q)) #TODO check if AR and MA models better, even if i don't think so
-        results_AR = model.fit(disp=-1) #Seems that it also works without this ? TODO Check
-        print ("Choosing p={}, q={} and d={}".format(p,q,d))
-        with open(save_path+"Results.csv","a",newline="") as file:
-            spamwriter=csv.writer(file,delimiter=";")
-            spamwriter.writerow(["p","q","d"])        
-            spamwriter.writerow([str(p),str(q),str(d)])
-    except:
-        print ("Warning: Chosen p={} and q={} don't work!! Choosing p={}, q={}, d={}".format(p,q,p,q-1,d))
-        model = ARIMA(ts_log, order=(p, d, q-1))
-        with open(save_path+"Results.csv","a",newline="") as file:
-            spamwriter=csv.writer(file,delimiter=";")
-            spamwriter.writerow(["p","q","d_corrected"])        
-            spamwriter.writerow([str(p),str(q),str(d-1)])
-        
-    results_AR = model.fit(disp=-1) #Uses Kalman filter to fit        
+    def modeling(ts_log,p,d,q,save_path,met):
+    
+        try:
+            model = ARIMA(ts_log, order=(p, d, q)) #TODO check if AR and MA models better, even if i don't think so
+            results_AR = model.fit(disp=-1,method=met) #Seems that it also works without this ? TODO Check
+            print ("Choosing p={}, q={} and d={}".format(p,q,d))
+            with open(save_path+"Results.csv","a",newline="") as file:
+                spamwriter=csv.writer(file,delimiter=";")
+                spamwriter.writerow(["p","q","d"])        
+                spamwriter.writerow([str(p),str(q),str(d)])
+            flag=1
+        except:
+            print ("Warning: Chosen p={} and q={} don't work!! Choosing p={}, q={}, d={}".format(p,q,p,q-1,d))
+            model = ARIMA(ts_log, order=(p, d, q-1))
+            with open(save_path+"Results.csv","a",newline="") as file:
+                spamwriter=csv.writer(file,delimiter=";")
+                spamwriter.writerow(["p","q","d_corrected"])        
+                spamwriter.writerow([str(p),str(q),str(d-1)])
+            flag=2
+            results_AR = model.fit(disp=-1,method=met) #Uses Kalman filter to fit     
+            
+        return results_AR,flag
+    
+    results_AR_mle,flag_mle = modeling(ts_log,p,d,q,save_path,"mle")
+    rss_mle=sum((results_AR_mle.fittedvalues-new_ts["Occurence"])**2)
+    
+    results_AR_cssmle,flag_cssmle = modeling(ts_log,p,d,q,save_path,"css-mle")
+    rss_cssmle=sum((results_AR_cssmle.fittedvalues-new_ts["Occurence"])**2)
+    if rss_mle<rss_cssmle:
+        rss=rss_mle
+        met="mle"
+        results_AR=results_AR_mle
+        flag=flag_mle
+    else:
+        rss=rss_cssmle
+        met="css-mle"
+        results_AR=results_AR_cssmle
+        flag=flag_cssmle
     
     #Prédictions futures
     forecast_nb=5
@@ -211,7 +236,7 @@ def model(dataM,save_path):
     plt.plot(dataM["Year"][d:],results_AR.fittedvalues, color='red',label="prediction") #d car nombre de NaN dépend de d.
     plt.plot(forecast_year,forecast,label="Future prediction",color='brown')
     plt.legend(loc="best")
-    rss=sum((results_AR.fittedvalues-new_ts["Occurence"])**2)
+    
     plt.title('RSS: %.4f'% rss)
     plt.savefig(save_path+'Model_Prediction_Transformed.png')
     plt.close()
@@ -286,54 +311,82 @@ def model(dataM,save_path):
     #print(full_prediction)
     #print(predictions_ARIMA_log)
     
-    return rss,rmse
+    return rss,rmse,flag,met
 
 
 # In[3]:
     
-
-input_size=5
-name_list = ["John"] #bf.get_list_names(input_size)
+print("Please input a number of names to evaluate: ")
+nb_names=int(input())
+#☺print("Please input a name to evaluate: ")
+#name_list = [input()]
+name_list = bf.get_list_names(nb_names) 
 state_list= bf.get_list_states()
-gender_list=["M","F"]
+states_number=len(state_list)
+#print("Please input the gender of the name: ")
 
 rss_list=[]
 rmse_list=[]
-with open("../results_arima/Results.csv","w",newline="") as file:
-    spamwriter=csv.writer(file,delimiter=";")
-    spamwriter.writerow(["name","state","gender","rss","rmse"])  
-for name in name_list:
-    for state in state_list[:input_size]:
-        data=bf.get_year(state,name)
-        for gender in gender_list:
-            
-            dataM=data[data["Gender"]==gender]
-            if dataM.shape==(0,5):
-                print("No timeseries")
-                continue
-            else:
-                save_path='../results_arima/{}-{}-{}/'.format(state,name,gender)
-                if not os.path.exists(save_path):
-                    os.mkdir(save_path)
+total_count=0
+c_notStationary=0
+c_correction=0
+transformation="log"
+time= datetime.datetime.now()
+main_path="../results_arima/{}/".format(time.strftime("%Y-%m-%d-%H-%M"))
+if not os.path.exists(main_path):
+    os.mkdir(main_path)
 
-                figure()
-                plt.plot(dataM["Year"],dataM["Occurence"])
-                plt.savefig(save_path+'Original.png')
-                plt.close()
+with open(main_path+"Results.csv","a",newline="") as file:
+    spamwriter=csv.writer(file,delimiter=";")
+    spamwriter.writerow(["name","state","gender","rss","rmse","transformation","fit_method"])  
+for name in name_list:
+    for state in state_list[:states_number]:
+        data=bf.get_year(state,name)
+        #for gender in gender_list:     
+        dataM=data[data["Gender"]=="M"]
+        dataF=data[data["Gender"]=="F"]  
+        gender="M"
+
+        if len(dataM)<len(dataF): #(len(dataM)==0 or (len(dataF)>0 & dataM["Occurence"].iloc[0]<dataF["Occurence"].iloc[0])):
+            dataM=dataF
+            gender="F"
+            
+        if len(dataM)==0:
+            print("No timeseries")
+            continue
+        else:
+            total_count+=1
+            save_path=main_path+'{}-{}-{}/'.format(state,name,gender)
+            if not os.path.exists(save_path):
+                os.mkdir(save_path)
+    
+            figure()
+            plt.plot(dataM["Year"],dataM["Occurence"])
+            plt.savefig(save_path+'Original.png')
+            plt.close()
+            
+            try:
+                rss,rmse,flag,met=arimaModel(dataM,save_path,transformation)
+                rss_list.append(rss)
+                rmse_list.append(rmse)
+                if flag==2:
+                    c_correction+=1
+            except:
+                c_notStationary+=1
+                #print("Not stationary!")
+                continue
+            
+            with open(main_path+"Results.csv","a",newline="") as file:
+                spamwriter=csv.writer(file,delimiter=";")     
+                spamwriter.writerow([name,state,gender,str(rss),str(rmse),transformation,met])
                 
-                try:
-                    rss,rmse=model(dataM,save_path)
-                    rss_list.append(rss)
-                    rmse_list.append(rmse)
-                except:
-                    print("Not stationary!")
-                    rss_list.append(-1)
-                    rmse_list.append(-1)
-                    continue
-                
-                with open("../results_arima/Results.csv","a",newline="") as file:
-                    spamwriter=csv.writer(file,delimiter=";")     
-                    spamwriter.writerow([name,state,gender,str(rss),str(rmse)])
+rmse_nan=pd.Series(rmse_list)
+
+with open(main_path+"Results.csv","a",newline="") as file:
+    spamwriter=csv.writer(file,delimiter=";")    
+    spamwriter.writerow(["countTotal","count_corrected","count_notStationary","mean_rss","nb_nan","mean_rmse"])
+    spamwriter.writerow([str(total_count),str(c_correction),str(c_notStationary),str(np.mean(rss_list)),str(rmse_nan.isna().sum()),str(np.mean(rmse_nan))])
+print("Total evaluations: {},  number of corrections of q: {},    number of not starionary ts: {}".format(str(total_count),str(c_correction),str(c_notStationary)))
 
 #name="John"
 #state="AK"
@@ -343,7 +396,7 @@ for name in name_list:
 #save_path='../results_arima/{}-{}-{}/'.format(state,name,gender)
 #if not os.path.exists(save_path):
 #    os.mkdir(save_path)
-#model(dataM,save_path)
+#model(dataM,save_path,transformation)
 
 
 # # Remarques:
@@ -387,7 +440,10 @@ for name in name_list:
 # => Et en fait, changer cette valeur ne change pas la conclusion sur la stationnarité ? Donc **peut prendre une valeur plus faible **
 # - les prénoms et states
 # - **méthodes pour rendre stationnaire car différentiation ne marche pas toujours!!!!!**
-# 
+# - Vérifier pour plus de courbes si même si mle ou css-mle pour fit fait diminuer rmle ? on dirait pas pour john...
+# - Fit pour moins de valeur puis prédire pour 2015 à 2020 ? Peut comparer pour 2015 à 2017
+
+
 # Vérifier pourquoi results_AR.forecast ne marche pas, mais results_AR.predict marche mieux ? Ce n'est pas censé faire la même chose ?
 # 
 # ---
