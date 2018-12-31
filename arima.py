@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
 import basic_functions as bf
-from statsmodels.tsa.stattools import adfuller, acf, pacf
+from statsmodels.tsa.stattools import adfuller, acf, pacf,kpss
 from statsmodels.tsa.arima_model import ARIMA
 import os
 import csv
@@ -57,6 +57,16 @@ def test_stationarity(timeseries):
         dfoutput['Critical Value (%s)'%key] = value
     #print (dfoutput)
     return dfoutput
+
+
+def kpss_test(timeseries):
+    print ('Results of KPSS Test:')
+    kpsstest = kpss(timeseries["Occurence"], regression='c')
+    kpss_output = pd.Series(kpsstest[0:3], index=['Test Statistic','p-value','Lags Used'])
+    for key,value in kpsstest[3].items():
+        kpss_output['Critical Value (%s)'%key] = value
+    
+    return kpss_output
 
 
 #On peut démontrer la relation par récurrence. Sk = Diffk + 2*S_k-1 - S_k-2
@@ -113,8 +123,10 @@ def arimaModel(dataM,save_path,transformation):
     result=test_stationarity(new_ts)
     with open(save_path+"Results.csv","w",newline="") as file:
         spamwriter=csv.writer(file,delimiter=";")
-        spamwriter.writerow(["Test Statistic",'Critical Value (1%)','Critical Value (5%)','Critical Value (10%)'])        
-        spamwriter.writerow([str(result["Test Statistic"]),str(result['Critical Value (1%)']),str(result['Critical Value (5%)']),str(result['Critical Value (10%)'])])
+        spamwriter.writerow(["ADF Test","Test Statistic",'Critical Value (1%)','Critical Value (5%)','Critical Value (10%)'])        
+        spamwriter.writerow(["",str(result["Test Statistic"]),str(result['Critical Value (1%)']),str(result['Critical Value (5%)']),str(result['Critical Value (10%)'])])
+    
+    #TODO GROS BUG !?! inverser la conclusion accepter ou rejeter l'hyp nulle pour AFD et KPSS ??
     
     if (result["Test Statistic"]>result['Critical Value (1%)']): #and result["Test Statistic"]>result['Critical Value (5%)']): 
     #MAIS déjà que c'est moyens, alors si on diminue la confiance de stationnarité, les résultats sont encore moins bons
@@ -128,15 +140,39 @@ def arimaModel(dataM,save_path,transformation):
         
         with open(save_path+"Results.csv","a",newline="") as file:
             spamwriter=csv.writer(file,delimiter=";")
-            spamwriter.writerow(["Test Statistic",'Critical Value (1%)','Critical Value (5%)','Critical Value (10%)'])        
-            spamwriter.writerow([str(result["Test Statistic"]),str(result['Critical Value (1%)']),str(result['Critical Value (5%)']),str(result['Critical Value (10%)'])])
+            spamwriter.writerow(["ADF Test","Test Statistic",'Critical Value (1%)','Critical Value (5%)','Critical Value (10%)'])        
+            spamwriter.writerow(["",str(result["Test Statistic"]),str(result['Critical Value (1%)']),str(result['Critical Value (5%)']),str(result['Critical Value (10%)'])])
 
         
         if (result["Test Statistic"]>result['Critical Value (1%)']):
             raise ValueError("La courbe n'est toujours pas stationnaire ! ")
         else:
+            #KPSS (Kwiatkowski-Phillips-Schmidt-Shin) Test
+            results_kpss = kpss_test(new_ts)
+            print(results_kpss)
+            
+            with open(save_path+"Results.csv","a",newline="") as file:
+                spamwriter=csv.writer(file,delimiter=";")
+                spamwriter.writerow(["KPSS Test","Test Statistic",'Critical Value (1%)','Critical Value (5%)','Critical Value (10%)'])        
+                spamwriter.writerow(["",str(results_kpss["Test Statistic"]),str(results_kpss['Critical Value (1%)']),str(results_kpss['Critical Value (5%)']),str(results_kpss['Critical Value (10%)'])])
+            
+            if (results_kpss["Test Statistic"]<results_kpss['Critical Value (2.5%)']):
+                raise ValueError("Test KPSS - La courbe à l'ordre 2 n'est pas trend-stationnaire ! ")
+                
             d = 2
     else:
+        #KPSS (Kwiatkowski-Phillips-Schmidt-Shin) Test
+        results_kpss = kpss_test(new_ts)
+        print(results_kpss)
+        
+        with open(save_path+"Results.csv","a",newline="") as file:
+            spamwriter=csv.writer(file,delimiter=";")
+            spamwriter.writerow(["KPSS Test","Test Statistic",'Critical Value (1%)','Critical Value (5%)','Critical Value (10%)'])        
+            spamwriter.writerow(["",str(results_kpss["Test Statistic"]),str(results_kpss['Critical Value (1%)']),str(results_kpss['Critical Value (5%)']),str(results_kpss['Critical Value (10%)'])])
+      
+        if (results_kpss["Test Statistic"]<results_kpss['Critical Value (2.5%)']):
+            raise ValueError("Test KPSS - La courbe n'est pas trend-stationnaire ! ")
+        
         d = 1
         
     #Stationnaire avec confiance de 99%
@@ -332,129 +368,68 @@ c_notStationary=0
 c_correction=0
 transformation="log"
 time= datetime.datetime.now()
-main_path="../results_arima/{}/".format(time.strftime("%Y-%m-%d-%H-%M"))
-if not os.path.exists(main_path):
-    os.mkdir(main_path)
+#main_path="../results_arima/{}/".format(time.strftime("%Y-%m-%d-%H-%M"))
+#if not os.path.exists(main_path):
+#    os.mkdir(main_path)
 
-with open(main_path+"Results.csv","a",newline="") as file:
-    spamwriter=csv.writer(file,delimiter=";")
-    spamwriter.writerow(["name","state","gender","rss","rmse","transformation","fit_method"])  
-for name in name_list:
-    for state in state_list[:states_number]:
-        data=bf.get_year(state,name)
-        #for gender in gender_list:     
-        dataM=data[data["Gender"]=="M"]
-        dataF=data[data["Gender"]=="F"]  
-        gender="M"
+#with open(main_path+"Results.csv","a",newline="") as file:
+#    spamwriter=csv.writer(file,delimiter=";")
+#    spamwriter.writerow(["name","state","gender","rss","rmse","transformation","fit_method"])  
+#for name in name_list:
+#    for state in state_list[:states_number]:
+#        data=bf.get_year(state,name)
+#        #for gender in gender_list:     
+#        dataM=data[data["Gender"]=="M"]
+#        dataF=data[data["Gender"]=="F"]  
+#        gender="M"
+#
+#        if len(dataM)<len(dataF): #(len(dataM)==0 or (len(dataF)>0 & dataM["Occurence"].iloc[0]<dataF["Occurence"].iloc[0])):
+#            dataM=dataF
+#            gender="F"
+#            
+#        if len(dataM)==0:
+#            print("No timeseries")
+#            continue
+#        else:
+#            total_count+=1
+#            save_path=main_path+'{}-{}-{}/'.format(state,name,gender)
+#            if not os.path.exists(save_path):
+#                os.mkdir(save_path)
+#    
+#            figure()
+#            plt.plot(dataM["Year"],dataM["Occurence"])
+#            plt.savefig(save_path+'Original.png')
+#            plt.close()
+#            
+#            try:
+#                rss,rmse,flag,met=arimaModel(dataM,save_path,transformation)
+#                rss_list.append(rss)
+#                rmse_list.append(rmse)
+#                if flag==2:
+#                    c_correction+=1
+#            except:
+#                c_notStationary+=1
+#                #print("Not stationary!")
+#                continue
+#            
+#            with open(main_path+"Results.csv","a",newline="") as file:
+#                spamwriter=csv.writer(file,delimiter=";")     
+#                spamwriter.writerow([name,state,gender,str(rss),str(rmse),transformation,met])
+#                
+#rmse_nan=pd.Series(rmse_list)
+#
+#with open(main_path+"Results.csv","a",newline="") as file:
+#    spamwriter=csv.writer(file,delimiter=";")    
+#    spamwriter.writerow(["countTotal","count_corrected","count_notStationary","mean_rss","nb_nan","mean_rmse"])
+#    spamwriter.writerow([str(total_count),str(c_correction),str(c_notStationary),str(np.mean(rss_list)),str(rmse_nan.isna().sum()),str(np.mean(rmse_nan))])
+#print("Total evaluations: {},  number of corrections of q: {},    number of not starionary ts: {}".format(str(total_count),str(c_correction),str(c_notStationary)))
 
-        if len(dataM)<len(dataF): #(len(dataM)==0 or (len(dataF)>0 & dataM["Occurence"].iloc[0]<dataF["Occurence"].iloc[0])):
-            dataM=dataF
-            gender="F"
-            
-        if len(dataM)==0:
-            print("No timeseries")
-            continue
-        else:
-            total_count+=1
-            save_path=main_path+'{}-{}-{}/'.format(state,name,gender)
-            if not os.path.exists(save_path):
-                os.mkdir(save_path)
-    
-            figure()
-            plt.plot(dataM["Year"],dataM["Occurence"])
-            plt.savefig(save_path+'Original.png')
-            plt.close()
-            
-            try:
-                rss,rmse,flag,met=arimaModel(dataM,save_path,transformation)
-                rss_list.append(rss)
-                rmse_list.append(rmse)
-                if flag==2:
-                    c_correction+=1
-            except:
-                c_notStationary+=1
-                #print("Not stationary!")
-                continue
-            
-            with open(main_path+"Results.csv","a",newline="") as file:
-                spamwriter=csv.writer(file,delimiter=";")     
-                spamwriter.writerow([name,state,gender,str(rss),str(rmse),transformation,met])
-                
-rmse_nan=pd.Series(rmse_list)
-
-with open(main_path+"Results.csv","a",newline="") as file:
-    spamwriter=csv.writer(file,delimiter=";")    
-    spamwriter.writerow(["countTotal","count_corrected","count_notStationary","mean_rss","nb_nan","mean_rmse"])
-    spamwriter.writerow([str(total_count),str(c_correction),str(c_notStationary),str(np.mean(rss_list)),str(rmse_nan.isna().sum()),str(np.mean(rmse_nan))])
-print("Total evaluations: {},  number of corrections of q: {},    number of not starionary ts: {}".format(str(total_count),str(c_correction),str(c_notStationary)))
-
-#name="John"
-#state="AK"
-#gender="M"
-#data=bf.get_year(state,name)
-#dataM=data[data["Gender"]==gender]
-#save_path='../results_arima/{}-{}-{}/'.format(state,name,gender)
-#if not os.path.exists(save_path):
-#    os.mkdir(save_path)
-#model(dataM,save_path,transformation)
-
-
-# # Remarques:
-# 
-# Marche plus ou moins bien suivant les prénoms.
-# 
-# Texas:
-# - John ok
-# - Lucas ok
-# - Bob non
-# - Jaime non
-# 
-# CA:
-# - John ok
-# - Sophie non
-# - Marie bof: tendance, mais courbes éloignées
-# - Catherine bof: idem :'(
-# 
-# NY:
-# - Jon: ordre 2. A améliorer
-# 
-# Même si la confiance est de 99% pour la stationnarité, la prédiction n'est pas géniale parfois.
-# 
-# En utilisant ACF et PACF, la plupart du temps, on devrait choisir p=1, q=1, mais ça bugue. Il faut mettre ARIMA(ts_log, order=(2, 1, 2)). J'ai pu mettre 1 et 1 pour Jaime, mais les résultats étaient mauvais.
-# 
-# ====> A revérifier parce qu'il y avait un bug
-# 
-# Quand ça suit plus ou moins la tendance, c'est quand même décalé...
-# 
-# Diff ordre 2 ne marche pas... Parce que pas assez de données ?
-# 
-# prendre en compte les gdes amplitudes, pas prendre forcément log, ms aussi sqrt etc ?
-# aussi prendre en compte les petites
-# 
-# enlever décalage
-# 
-# 
-# ## Paramètres à changer éventuellement et autres à faire:
-# - p et q et d
-# - time window de 15 années ====> par exemple, valeur trop grande quand c'est un nouveau prénom utilisé que récemment (genre Khaleesi). En même temps, pour ces prénoms, c'est encore plus dur de prédire leur tendance et il y a très peu de chance qu'ils deviennent les prénoms les plus populaires.
-# => Et en fait, changer cette valeur ne change pas la conclusion sur la stationnarité ? Donc **peut prendre une valeur plus faible **
-# - les prénoms et states
-# - **méthodes pour rendre stationnaire car différentiation ne marche pas toujours!!!!!**
-# - Vérifier pour plus de courbes si même si mle ou css-mle pour fit fait diminuer rmle ? on dirait pas pour john...
-# - Fit pour moins de valeur puis prédire pour 2015 à 2020 ? Peut comparer pour 2015 à 2017
-
-
-# Vérifier pourquoi results_AR.forecast ne marche pas, mais results_AR.predict marche mieux ? Ce n'est pas censé faire la même chose ?
-# 
-# ---
-# 
-# # References
-# 
-# https://www.analyticsvidhya.com/blog/2016/02/time-series-forecasting-codes-python/  
-# https://www.analyticsvidhya.com/blog/2018/09/non-stationary-time-series-python/
-# 
-# 
-# https://otexts.org/fpp2/stationarity.html  
-# https://people.duke.edu/~rnau/411arim2.htm  
-# https://machinelearningmastery.com/remove-trends-seasonality-difference-transform-python/  
-# https://machinelearningmastery.com/time-series-data-stationary-python/
+name="John"
+state="AK"
+gender="M"
+data=bf.get_year(state,name)
+dataM=data[data["Gender"]==gender]
+save_path='../results_arima/{}-{}-{}/'.format(state,name,gender)
+if not os.path.exists(save_path):
+    os.mkdir(save_path)
+arimaModel(dataM,save_path,transformation)
