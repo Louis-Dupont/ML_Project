@@ -357,20 +357,25 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
     predictions_ARIMA_diff = pd.Series(full_prediction, copy=True) #pq recreer une autre série ?
     if (d==1):
         predictions_ARIMA_diff_cumsum = predictions_ARIMA_diff.cumsum()
-        predictions_ARIMA_log = pd.Series(ts_log.iloc[0], index=ts_log.index) #à changer quand on met la prédiction future ? possible ?
+        predictions_ARIMA_log = pd.Series(ts_log.iloc[0], index=predictions_ARIMA_diff_cumsum.index) #à changer quand on met la prédiction future ? possible ?
+        #print(predictions_ARIMA_log)
         predictions_ARIMA_log = predictions_ARIMA_log.add(predictions_ARIMA_diff_cumsum,fill_value=0)
         predictions_ARIMA = trans_inv(predictions_ARIMA_log)
-        #print(predictions_ARIMA)
+        #print(predictions_ARIMA_log)
+        #print(full_prediction_year.shape)
+        #print(full_prediction,predictions_ARIMA_diff_cumsum,predictions_ARIMA_log,predictions_ARIMA)
+        
         
         #Recréer une timeseries de prédiction  pour rendre plus compréhensible
         figure()
         plt.plot(dataM["Year"],dataM["Occurence"],color="blue",label="Original")
-        plt.plot(full_prediction_year[0:len(full_prediction_year)-forecast_nb],predictions_ARIMA[:len(predictions_ARIMA)-forecast_nb],color="Red",label="Prediction")
+        
+        plt.plot(full_prediction_year[1:len(full_prediction_year)-forecast_nb],predictions_ARIMA[:len(predictions_ARIMA)-forecast_nb],color="Red",label="Prediction")
         plt.plot(full_prediction_year[len(full_prediction_year)-forecast_nb:],predictions_ARIMA[len(predictions_ARIMA)-forecast_nb:],color="Violet",label="Future Prediction")
         plt.legend(loc="best")
         plt.xlim(1910,2020)
         
-        rmse=np.sqrt(sum((predictions_ARIMA[forecast_nb:]-dataM["Occurence"])**2)/len(dataM["Occurence"]))
+        rmse=np.sqrt(sum((predictions_ARIMA[:len(predictions_ARIMA)-forecast_nb]-dataM["Occurence"][1:])**2)/len(dataM["Occurence"]))
         plt.title('RMSE: %.4f'% rmse)
         plt.savefig(save_path+'Model_Prediction.png')
         plt.close()
@@ -424,7 +429,7 @@ name_list = bf.get_list_names(nb_names)
 state_list= bf.get_list_states()
 states_number=len(state_list)
 
-##Run on all states for the chosen names
+#Run on all states for the chosen names
 rss_list=[]
 rmse_list=[]
 total_count=0
@@ -494,8 +499,8 @@ with open(main_path+"main_results.csv","a",newline="") as file:
 print("Total eval: {},  nb of corr of q: {},    nb of not starionary ts: {},  nb model: {},    nb brut better: {}".format(str(total_count),str(c_correction),str(c_notStationary),str(total_count-c_notStationary),str(c_brut)))
 print("Duration: {}".format(str(datetime.datetime.now()-time)))
 
-#name="James"
-#state="NV"
+#name="John"
+#state="KS"
 #gender="M"
 #transformation="log"
 #data=bf.get_year(state,name)
@@ -503,6 +508,6 @@ print("Duration: {}".format(str(datetime.datetime.now()-time)))
 #save_path='../results_arima/{}-{}-{}-{}/'.format(state,name,gender,datetime.datetime.now().strftime("%d-%H-%M"))
 #if not os.path.exists(save_path):
 #    os.mkdir(save_path)
-#arimaModel(dataM,save_path,transformation,kpss=True)
+#arimaModel(dataM,save_path,transformation,kpss=False)
 
 #RQ : ne marche pas quand les valeurs sont plus faibles. ex occurence qui est <2000 au max.
