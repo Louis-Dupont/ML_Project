@@ -370,8 +370,9 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
         figure()
         plt.plot(dataM["Year"],dataM["Occurence"],color="blue",label="Original")
         
-        plt.plot(full_prediction_year[1:len(full_prediction_year)-forecast_nb],predictions_ARIMA[:len(predictions_ARIMA)-forecast_nb],color="Red",label="Prediction")
-        plt.plot(full_prediction_year[len(full_prediction_year)-forecast_nb:],predictions_ARIMA[len(predictions_ARIMA)-forecast_nb:],color="Violet",label="Future Prediction")
+        #normalement full_prediction_year[1:len(full_prediction_year)-forecast_nb]
+        plt.plot(full_prediction_year[0:len(full_prediction_year)-forecast_nb-1],predictions_ARIMA[:len(predictions_ARIMA)-forecast_nb],color="Red",label="Prediction")
+        plt.plot(full_prediction_year[len(full_prediction_year)-forecast_nb-1:len(full_prediction_year)-1],predictions_ARIMA[len(predictions_ARIMA)-forecast_nb:],color="Violet",label="Future Prediction")
         plt.legend(loc="best")
         plt.xlim(1910,2020)
         
@@ -383,6 +384,18 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
             spamwriter=csv.writer(file,delimiter=";")
             spamwriter.writerow(["rmse"])        
             spamwriter.writerow([str(rmse)])
+        
+        print(predictions_ARIMA)
+        
+        with open(save_path+"Results_model.csv","w",newline="") as file:
+            spamwriter=csv.writer(file,delimiter=";")
+            spamwriter.writerow(["year","model","data"])
+            spamwriter.writerow([dataM["Year"].iloc[0],'',dataM["Occurence"].iloc[0]])
+            for i in range(1,len(dataM["Year"])):
+                spamwriter.writerow([dataM["Year"].iloc[i],predictions_ARIMA.iloc[i-1],dataM["Occurence"].iloc[i]])
+            for i in range(forecast_nb):
+                spamwriter.writerow([full_prediction_year.iloc[len(full_prediction_year)-forecast_nb+i],predictions_ARIMA.iloc[len(predictions_ARIMA)-forecast_nb+i]])
+        
         
     elif (d==2):
         predictions_ARIMA_log = originalScaleOrder2(predictions_ARIMA_diff)
@@ -420,94 +433,96 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
 # In[3]:
     
 print("Please input a number of names to evaluate: ")
-nb_names=int(input())
-name_list = bf.get_list_names(nb_names) 
+#nb_names=int(input())
+#name_list = bf.get_list_names(nb_names) 
 
-#print("Please input a name to evaluate: ")
-#name_list = [input()]
+#name_list=[]
+#print("Please input the names to evaluate: ")
+#for i in range(nb_names):
+#    name_list.append(input())
 
 state_list= bf.get_list_states()
 states_number=len(state_list)
 
 #Run on all states for the chosen names
-rss_list=[]
-rmse_list=[]
-total_count=0
-c_notStationary=0
-c_correction=0
-c_brut=0
-transformation="log" #sqrt marche moyennement que pour John TX
-time= datetime.datetime.now()
-main_path="../results_arima/{}/".format(time.strftime("%Y-%m-%d-%H-%M"))
-if not os.path.exists(main_path):
-    os.mkdir(main_path)
+#rss_list=[]
+#rmse_list=[]
+#total_count=0
+#c_notStationary=0
+#c_correction=0
+#c_brut=0
+#transformation="log" #sqrt marche moyennement que pour John TX
+#time= datetime.datetime.now()
+#main_path="../results_arima/{}/".format(time.strftime("%Y-%m-%d-%H-%M"))
+#if not os.path.exists(main_path):
+#    os.mkdir(main_path)
+#
+#with open(main_path+"main_results.csv","a",newline="") as file:
+#    spamwriter=csv.writer(file,delimiter=";")
+#    spamwriter.writerow(["name","state","gender","rss","rmse","transformation","fit_method","differentiation order","p","q","p_brut","q_brut"])  
+#for name in name_list:
+#    for state in state_list[:states_number]:
+#        print("{} - {}".format(name,state))
+#        data=bf.get_year(state,name)
+#        #for gender in gender_list:     
+#        dataM=data[data["Gender"]=="M"]
+#        dataF=data[data["Gender"]=="F"]  
+#        gender="M"
+#
+#        if len(dataM)<len(dataF): #(len(dataM)==0 or (len(dataF)>0 & dataM["Occurence"].iloc[0]<dataF["Occurence"].iloc[0])):
+#            dataM=dataF
+#            gender="F"
+#            
+#        if len(dataM)==0:
+#            print("No timeseries.")
+#            continue
+#        else:
+#            total_count+=1
+#            save_path=main_path+'{}-{}-{}/'.format(name,state,gender)
+#            if not os.path.exists(save_path):
+#                os.mkdir(save_path)
+#    
+#            figure()
+#            plt.plot(dataM["Year"],dataM["Occurence"])
+#            plt.savefig(save_path+'Original.png')
+#            plt.close()
+#            
+#            try:
+#                rss,rmse,flag,met,d,p,q,p_brut,q_brut=arimaModel(dataM,save_path,transformation,kpss=False)
+#                rss_list.append(rss)
+#                rmse_list.append(rmse)
+#                if flag==2:
+#                    c_correction+=1
+#                elif flag==3:
+#                    c_brut+=1
+#            except:
+#                c_notStationary+=1
+#                print("Not stationary!")
+#                os.rename(save_path,main_path+"{}-{}-{}_notStat/".format(name,state,gender))
+#                continue
+#            
+#            with open(main_path+"main_results.csv","a",newline="") as file:
+#                spamwriter=csv.writer(file,delimiter=";")     
+#                spamwriter.writerow([name,state,gender,rss,rmse,transformation,met,d,p,q,p_brut,q_brut])
+#                
+#rmse_nan=pd.Series(rmse_list)
+#
+#with open(main_path+"main_results.csv","a",newline="") as file:
+#    spamwriter=csv.writer(file,delimiter=";")    
+#    spamwriter.writerow(["countTotal","count_corrected","count_notStationary","count_brut","mean_rss","nb_nan","mean_rmse"])
+#    spamwriter.writerow([str(total_count),str(c_correction),str(c_notStationary),str(c_brut),str(np.mean(rss_list)),str(rmse_nan.isna().sum()),str(np.mean(rmse_nan))])
+#print("Total eval: {},  nb of corr of q: {},    nb of not starionary ts: {},  nb model: {},    nb brut better: {}".format(str(total_count),str(c_correction),str(c_notStationary),str(total_count-c_notStationary),str(c_brut)))
+#print("Duration: {}".format(str(datetime.datetime.now()-time)))
 
-with open(main_path+"main_results.csv","a",newline="") as file:
-    spamwriter=csv.writer(file,delimiter=";")
-    spamwriter.writerow(["name","state","gender","rss","rmse","transformation","fit_method","differentiation order","p","q","p_brut","q_brut"])  
-for name in name_list:
-    for state in state_list[:states_number]:
-        print("{} - {}".format(name,state))
-        data=bf.get_year(state,name)
-        #for gender in gender_list:     
-        dataM=data[data["Gender"]=="M"]
-        dataF=data[data["Gender"]=="F"]  
-        gender="M"
-
-        if len(dataM)<len(dataF): #(len(dataM)==0 or (len(dataF)>0 & dataM["Occurence"].iloc[0]<dataF["Occurence"].iloc[0])):
-            dataM=dataF
-            gender="F"
-            
-        if len(dataM)==0:
-            print("No timeseries.")
-            continue
-        else:
-            total_count+=1
-            save_path=main_path+'{}-{}-{}/'.format(name,state,gender)
-            if not os.path.exists(save_path):
-                os.mkdir(save_path)
-    
-            figure()
-            plt.plot(dataM["Year"],dataM["Occurence"])
-            plt.savefig(save_path+'Original.png')
-            plt.close()
-            
-            try:
-                rss,rmse,flag,met,d,p,q,p_brut,q_brut=arimaModel(dataM,save_path,transformation,kpss=False)
-                rss_list.append(rss)
-                rmse_list.append(rmse)
-                if flag==2:
-                    c_correction+=1
-                elif flag==3:
-                    c_brut+=1
-            except:
-                c_notStationary+=1
-                print("Not stationary!")
-                os.rename(save_path,main_path+"{}-{}-{}_notStat/".format(name,state,gender))
-                continue
-            
-            with open(main_path+"main_results.csv","a",newline="") as file:
-                spamwriter=csv.writer(file,delimiter=";")     
-                spamwriter.writerow([name,state,gender,rss,rmse,transformation,met,d,p,q,p_brut,q_brut])
-                
-rmse_nan=pd.Series(rmse_list)
-
-with open(main_path+"main_results.csv","a",newline="") as file:
-    spamwriter=csv.writer(file,delimiter=";")    
-    spamwriter.writerow(["countTotal","count_corrected","count_notStationary","count_brut","mean_rss","nb_nan","mean_rmse"])
-    spamwriter.writerow([str(total_count),str(c_correction),str(c_notStationary),str(c_brut),str(np.mean(rss_list)),str(rmse_nan.isna().sum()),str(np.mean(rmse_nan))])
-print("Total eval: {},  nb of corr of q: {},    nb of not starionary ts: {},  nb model: {},    nb brut better: {}".format(str(total_count),str(c_correction),str(c_notStationary),str(total_count-c_notStationary),str(c_brut)))
-print("Duration: {}".format(str(datetime.datetime.now()-time)))
-
-#name="John"
-#state="KS"
-#gender="M"
-#transformation="log"
-#data=bf.get_year(state,name)
-#dataM=data[data["Gender"]==gender]
-#save_path='../results_arima/{}-{}-{}-{}/'.format(state,name,gender,datetime.datetime.now().strftime("%d-%H-%M"))
-#if not os.path.exists(save_path):
-#    os.mkdir(save_path)
-#arimaModel(dataM,save_path,transformation,kpss=False)
+name="John"
+state="KS"
+gender="M"
+transformation="log"
+data=bf.get_year(state,name)
+dataM=data[data["Gender"]==gender]
+save_path='../results_arima/{}-{}-{}-{}/'.format(state,name,gender,datetime.datetime.now().strftime("%d-%H-%M"))
+if not os.path.exists(save_path):
+    os.mkdir(save_path)
+arimaModel(dataM,save_path,transformation,kpss=False)
 
 #RQ : ne marche pas quand les valeurs sont plus faibles. ex occurence qui est <2000 au max.
