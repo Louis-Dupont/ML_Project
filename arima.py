@@ -1,6 +1,3 @@
-
-# coding: utf-8
-
 # In[31]:
 
 
@@ -80,7 +77,7 @@ def originalScaleOrder2(timeseries):
 
 # In[56]:
 
-def arimaModel(dataM,save_path,transformation):
+def arimaModel(dataM,save_path,transformation,kpss=True):
     _pow = np.power
     if transformation=="log":
         trans_func = np.log
@@ -100,11 +97,17 @@ def arimaModel(dataM,save_path,transformation):
         
         trans_func= initial
         trans_inv = initial
+    elif transformation=="log10":
+        trans_func= lambda x: np.log(x)*10
+        trans_inv= lambda x: np.exp(x/10)
         
     ts_log = trans_func(dataM["Occurence"])
     
-    #plt.plot(dataM["Year"],ts_log, color = 'blue',label="Transformation")
-    #plt.close()
+    figure()
+    plt.plot(dataM["Year"],ts_log, color = 'blue',label="Transformation")
+    plt.title('Transformed Timeseries')
+    plt.savefig(save_path+'Transformed_TS.png')
+    plt.close()
     
     #Differentiation ordre 1
     ts_log_diff = ts_log.diff() #ts_log - ts_log.shift()
@@ -132,6 +135,7 @@ def arimaModel(dataM,save_path,transformation):
     
     if (result["Test Statistic"]>result['Critical Value (1%)']): #and result["Test Statistic"]>result['Critical Value (5%)']): 
     #MAIS déjà que c'est moyens, alors si on diminue la confiance de stationnarité, les résultats sont encore moins bons
+        raise ValueError("Maybe order 2 stationary, but not working for now.")    
         print ("La courbe n'est pas stationnaire ! Différentiation à l'ordre 2.")
     
         #Recreate timeseries with result of diff order 2
@@ -148,31 +152,33 @@ def arimaModel(dataM,save_path,transformation):
         
         if (result["Test Statistic"]>result['Critical Value (1%)']):
             raise ValueError("La courbe n'est toujours pas stationnaire ! ")
-        else:
+        else:            
+            if kpss==True:
+                #KPSS (Kwiatkowski-Phillips-Schmidt-Shin) Test
+                results_kpss = kpss_test(new_ts)
+                
+                with open(save_path+"Results.csv","a",newline="") as file:
+                    spamwriter=csv.writer(file,delimiter=";")
+                    spamwriter.writerow(["KPSS Test","Test Statistic",'Critical Value (1%)','Critical Value (5%)','Critical Value (10%)'])        
+                    spamwriter.writerow(["",str(results_kpss["Test Statistic"]),str(results_kpss['Critical Value (1%)']),str(results_kpss['Critical Value (5%)']),str(results_kpss['Critical Value (10%)'])])
+                
+                if (results_kpss["Test Statistic"]<results_kpss['Critical Value (2.5%)']):
+                    raise ValueError("Test KPSS - La courbe à l'ordre 2 n'est pas trend-stationnaire ! ")
+                
+            d = 2
+    else:
+        if kpss==True:
             #KPSS (Kwiatkowski-Phillips-Schmidt-Shin) Test
             results_kpss = kpss_test(new_ts)
+            #print(results_kpss)
             
             with open(save_path+"Results.csv","a",newline="") as file:
                 spamwriter=csv.writer(file,delimiter=";")
                 spamwriter.writerow(["KPSS Test","Test Statistic",'Critical Value (1%)','Critical Value (5%)','Critical Value (10%)'])        
                 spamwriter.writerow(["",str(results_kpss["Test Statistic"]),str(results_kpss['Critical Value (1%)']),str(results_kpss['Critical Value (5%)']),str(results_kpss['Critical Value (10%)'])])
-            
+          
             if (results_kpss["Test Statistic"]<results_kpss['Critical Value (2.5%)']):
-                raise ValueError("Test KPSS - La courbe à l'ordre 2 n'est pas trend-stationnaire ! ")
-                
-            d = 2
-    else:
-        #KPSS (Kwiatkowski-Phillips-Schmidt-Shin) Test
-        results_kpss = kpss_test(new_ts)
-        #print(results_kpss)
-        
-        with open(save_path+"Results.csv","a",newline="") as file:
-            spamwriter=csv.writer(file,delimiter=";")
-            spamwriter.writerow(["KPSS Test","Test Statistic",'Critical Value (1%)','Critical Value (5%)','Critical Value (10%)'])        
-            spamwriter.writerow(["",str(results_kpss["Test Statistic"]),str(results_kpss['Critical Value (1%)']),str(results_kpss['Critical Value (5%)']),str(results_kpss['Critical Value (10%)'])])
-      
-        if (results_kpss["Test Statistic"]<results_kpss['Critical Value (2.5%)']):
-            raise ValueError("Test KPSS - La courbe n'est pas trend-stationnaire ! ")
+                raise ValueError("Test KPSS - La courbe n'est pas trend-stationnaire ! ")
         
         d = 1
         
@@ -230,7 +236,6 @@ def arimaModel(dataM,save_path,transformation):
         return results_AR,flag
     
     def modeling(ts_log,p,d,q,save_path,met):
-    
         try:
             model = ARIMA(ts_log, order=(p, d, q)) #TODO check if AR and MA models better, even if i don't think so
             results_AR = model.fit(disp=-1,method=met) #Seems that it also works without this ? TODO Check
@@ -259,15 +264,15 @@ def arimaModel(dataM,save_path,transformation):
                     q_brut=q_it
             except:
                 break
+            
+    with open(save_path+"Results.csv","a",newline="") as file:
+        spamwriter=csv.writer(file,delimiter=";")
+        spamwriter.writerow(["p_brut","q_brut"])        
+        spamwriter.writerow([str(p_brut),str(q_brut)])
     
-    if (p_brut!=p or q_brut!=q):
-        print("Brut choosing different: p={} and q={}".format(p_brut,q_brut))
-        with open(save_path+"Results.csv","a",newline="") as file:
-            spamwriter=csv.writer(file,delimiter=";")
-            spamwriter.writerow(["p_brut","q_brut"])        
-            spamwriter.writerow([str(p_brut),str(q_brut)])
-    
-    
+    if (p>=6 or q>=6):
+        print("Brut choosing not enough: p={} and q={}".format(p_brut,q_brut))
+
         #Using ACF, PACF analysis
         results_AR_mle,flag_mle,q_cor = modeling(ts_log,p,d,q,save_path,"mle")
         rss_mle=sum((results_AR_mle.fittedvalues-new_ts["Occurence"])**2)
@@ -307,10 +312,16 @@ def arimaModel(dataM,save_path,transformation):
             results_AR=results_AR_brut
             flag=flag_brut
     else:
+        if (p_brut==p or q_brut==q):
+            print("ACF Analysis correct: p={} and q={}".format(p,q))
+            flag=1
+        else:
+            print("Brut choosing better: p={} and q={} instead of p={} and q={}".format(p_brut,q_brut,p,q))
+            flag=flag_brut
+        
         rss=min_rss
         met="css-mle"
         results_AR=results_AR_brut
-        flag=1
 
     #Prédictions futures
     forecast_nb=5
@@ -405,12 +416,15 @@ def arimaModel(dataM,save_path,transformation):
     
 print("Please input a number of names to evaluate: ")
 nb_names=int(input())
+name_list = bf.get_list_names(nb_names) 
+
 #print("Please input a name to evaluate: ")
 #name_list = [input()]
-name_list = bf.get_list_names(nb_names) 
+
 state_list= bf.get_list_states()
 states_number=len(state_list)
 
+##Run on all states for the chosen names
 rss_list=[]
 rmse_list=[]
 total_count=0
@@ -454,7 +468,7 @@ for name in name_list:
             plt.close()
             
             try:
-                rss,rmse,flag,met,d,p,q,p_brut,q_brut=arimaModel(dataM,save_path,transformation)
+                rss,rmse,flag,met,d,p,q,p_brut,q_brut=arimaModel(dataM,save_path,transformation,kpss=False)
                 rss_list.append(rss)
                 rmse_list.append(rmse)
                 if flag==2:
@@ -478,15 +492,17 @@ with open(main_path+"main_results.csv","a",newline="") as file:
     spamwriter.writerow(["countTotal","count_corrected","count_notStationary","count_brut","mean_rss","nb_nan","mean_rmse"])
     spamwriter.writerow([str(total_count),str(c_correction),str(c_notStationary),str(c_brut),str(np.mean(rss_list)),str(rmse_nan.isna().sum()),str(np.mean(rmse_nan))])
 print("Total eval: {},  nb of corr of q: {},    nb of not starionary ts: {},  nb model: {},    nb brut better: {}".format(str(total_count),str(c_correction),str(c_notStationary),str(total_count-c_notStationary),str(c_brut)))
+print("Duration: {}".format(str(datetime.datetime.now()-time)))
 
-#name="John"
-#state="CA"
+#name="James"
+#state="NV"
 #gender="M"
+#transformation="log"
 #data=bf.get_year(state,name)
 #dataM=data[data["Gender"]==gender]
-#save_path='../results_arima/{}-{}-{}/'.format(state,name,gender)
+#save_path='../results_arima/{}-{}-{}-{}/'.format(state,name,gender,datetime.datetime.now().strftime("%d-%H-%M"))
 #if not os.path.exists(save_path):
 #    os.mkdir(save_path)
-#arimaModel(dataM,save_path,transformation)
+#arimaModel(dataM,save_path,transformation,kpss=True)
 
 #RQ : ne marche pas quand les valeurs sont plus faibles. ex occurence qui est <2000 au max.
