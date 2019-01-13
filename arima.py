@@ -228,20 +228,21 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
     # In[49]:
     
     met="mle"
+    prediction=5
     
-    def modelingBrut(ts_log,p,d,q,met):
-        model = ARIMA(ts_log, order=(p, d, q)) #TODO check if AR and MA models better, even if i don't think so
+    def modelingBrut(ts_log,p,d,q,met,prediction):
+        model = ARIMA(ts_log[:len(ts_log)-prediction], order=(p, d, q)) #TODO check if AR and MA models better, even if i don't think so
         results_AR = model.fit(disp=-1,method=met) #Seems that it also works without this ? TODO Check
         flag=3
         return results_AR,flag
     
     def modeling(ts_log,p,d,q,save_path,met):
         try:
-            model = ARIMA(ts_log, order=(p, d, q)) #TODO check if AR and MA models better, even if i don't think so
+            model = ARIMA(ts_log[:len(ts_log)-prediction], order=(p, d, q)) #TODO check if AR and MA models better, even if i don't think so
             results_AR = model.fit(disp=-1,method=met) #Seems that it also works without this ? TODO Check
             flag=1
         except:
-            model = ARIMA(ts_log, order=(p, d, q-1))
+            model = ARIMA(ts_log[:len(ts_log)-prediction], order=(p, d, q-1))
             flag=2
             results_AR = model.fit(disp=-1,method=met) #Uses Kalman filter to fit    
             q=q-1
@@ -255,8 +256,8 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
     for p_it in range(6):
         for q_it in range(6):
             try:
-                results_AR_brut,flag_brut=modelingBrut(ts_log,p_it,d,q_it,"mle")
-                rss=sum((results_AR_brut.fittedvalues-new_ts["Occurence"])**2)
+                results_AR_brut,flag_brut=modelingBrut(ts_log,p_it,d,q_it,"mle",prediction)
+                rss=sum((results_AR_brut.fittedvalues-new_ts["Occurence"][:len(new_ts["Occurence"])-prediction])**2)
                 #print("{}  {}  {}".format(str(p_it),str(q_it),str(rss)))
                 if rss<min_rss:
                     min_rss=rss
@@ -274,11 +275,11 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
         print("Brut choosing not enough: p={} and q={}".format(p_brut,q_brut))
 
         #Using ACF, PACF analysis
-        results_AR_mle,flag_mle,q_cor = modeling(ts_log,p,d,q,save_path,"mle")
-        rss_mle=sum((results_AR_mle.fittedvalues-new_ts["Occurence"])**2)
+        results_AR_mle,flag_mle,q_cor = modeling(ts_log,p,d,q,save_path,"mle",prediction)
+        rss_mle=sum((results_AR_mle.fittedvalues-new_ts["Occurence"][:len(new_ts)-prediction])**2)
         
-        results_AR_cssmle,flag_cssmle,q_cor = modeling(ts_log,p,d,q,save_path,"css-mle")
-        rss_cssmle=sum((results_AR_cssmle.fittedvalues-new_ts["Occurence"])**2)
+        results_AR_cssmle,flag_cssmle,q_cor = modeling(ts_log,p,d,q,save_path,"css-mle",prediction)
+        rss_cssmle=sum((results_AR_cssmle.fittedvalues-new_ts["Occurence"][:len(new_ts)-prediction])**2)
         
         if flag_mle==1:
             print ("Choosing p={}, q={} and d={}".format(p,q,d))
@@ -324,25 +325,38 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
         results_AR=results_AR_brut
 
     #Prédictions futures
+    prediction=5
     forecast_nb=5
-    forecast_year=[dataM["Year"].iloc[len(dataM["Year"])-1]+i for i in range(1,forecast_nb+1)]
-    forecast=results_AR.predict(start=len(dataM["Year"]),end=len(dataM["Year"])+forecast_nb-1)
+    current_prediction_year=dataM["Year"][len(dataM["Year"])-prediction:]
+    future_years=[dataM["Year"].iloc[len(dataM["Year"])-1]+i for i in range(1,forecast_nb+1)]
+    forecast=results_AR.predict(start=len(dataM["Year"])-prediction,end=len(dataM["Year"])+forecast_nb-1)
     
     new_ts.dropna(inplace=True)
     plt.figure()
     plt.plot(new_ts["Year"],new_ts["Occurence"],label="Original",color='blue')
-    plt.plot(dataM["Year"][d:],results_AR.fittedvalues, color='red',label="prediction") #d car nombre de NaN dépend de d.
-    plt.plot(forecast_year,forecast,label="Future prediction",color='brown')
+    plt.plot(dataM["Year"][d:len(dataM["Year"])-prediction],results_AR.fittedvalues, color='red',label="Model") #d car nombre de NaN dépend de d.
+    plt.plot(current_prediction_year,forecast[:prediction],label="Prediction",color='Green')
+    plt.plot(future_years,forecast[prediction:],label="Future prediction",color='Violet')
     plt.legend(loc="best")
     
     plt.title('RSS: %.4f'% rss)
     plt.savefig(save_path+'Model_Prediction_Transformed.png')
     plt.close()
+    #rss_pred=sum((forecast[:prediction]-new_ts["Occurence"][len(new_ts["Occurence"])-prediction:])**2)
+    
+    #print(forecast[:prediction])
+    #print(new_ts["Occurence"][len(new_ts["Occurence"])-prediction:])
+    
+    s=0
+    for i in range(len(forecast[:prediction])):
+        s+=(forecast[:prediction].iloc[i]-new_ts["Occurence"][len(new_ts["Occurence"])-prediction:].iloc[i])**2
+    #TODO bug avec rss_pred actuellement
+    rss_pred=s
     
     with open(save_path+"Results.csv","a",newline="") as file:
         spamwriter=csv.writer(file,delimiter=";")
-        spamwriter.writerow(["rss"])        
-        spamwriter.writerow([str(rss)])
+        spamwriter.writerow(["rss","rss_pred"])        
+        spamwriter.writerow([rss,s])
     
 
     # Traitement inverse des données
@@ -351,7 +365,7 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
     
     
     full_prediction = results_AR.fittedvalues.append(forecast)
-    full_prediction_year = dataM["Year"].append(pd.Series(forecast_year))
+    full_prediction_year = dataM["Year"].append(pd.Series(future_years))
     
     #Fait les opérations inverses pour avoir la prédiction avec trend et seasonality
     predictions_ARIMA_diff = pd.Series(full_prediction, copy=True) #pq recreer une autre série ?
@@ -366,19 +380,30 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
         plt.plot(dataM["Year"],dataM["Occurence"],color="blue",label="Original")
         
         #normalement full_prediction_year[1:len(full_prediction_year)-forecast_nb]
-        plt.plot(full_prediction_year[0:len(full_prediction_year)-forecast_nb-1],predictions_ARIMA[:len(predictions_ARIMA)-forecast_nb],color="Red",label="Prediction")
-        plt.plot(full_prediction_year[len(full_prediction_year)-forecast_nb-1:len(full_prediction_year)-1],predictions_ARIMA[len(predictions_ARIMA)-forecast_nb:],color="Violet",label="Future Prediction")
+        plt.plot(full_prediction_year[0:len(full_prediction_year)-forecast_nb-prediction],predictions_ARIMA[:len(predictions_ARIMA)-forecast_nb-prediction+1],color="Red",label="Model")
+        plt.plot(full_prediction_year[len(full_prediction_year)-forecast_nb-prediction:len(full_prediction_year)-forecast_nb],predictions_ARIMA[len(predictions_ARIMA)-forecast_nb-prediction:len(predictions_ARIMA)-forecast_nb],color="Green",label="Prediction")
+        plt.plot(full_prediction_year[len(full_prediction_year)-forecast_nb:],predictions_ARIMA[len(predictions_ARIMA)-forecast_nb:],color="Violet",label="Future Prediction")
         plt.legend(loc="best")
         plt.xlim(1910,2020)
         
-        rmse=np.sqrt(sum((predictions_ARIMA[:len(predictions_ARIMA)-forecast_nb]-dataM["Occurence"][1:])**2)/len(dataM["Occurence"]))
+        rmse=np.sqrt(sum((predictions_ARIMA[:len(predictions_ARIMA)-forecast_nb-prediction]-dataM["Occurence"][1:len(dataM["Occurence"])-prediction])**2)/((len(dataM["Occurence"])-prediction)*dataM["Occurence"].max()))
+        #rmse_pred=np.sqrt(sum((predictions_ARIMA[len(predictions_ARIMA)-forecast_nb-prediction:len(predictions_ARIMA)-forecast_nb]-dataM["Occurence"][len(dataM["Occurence"])-prediction:])**2)/(prediction*dataM["Occurence"][len(dataM["Occurence"])-prediction:].max()))
+        #XXX attention, j'ai essayé de normalisé
+        
+        s=0
+        for i in range(prediction):
+            s+=(predictions_ARIMA[len(predictions_ARIMA)-forecast_nb-prediction:len(predictions_ARIMA)-forecast_nb].iloc[i]-dataM["Occurence"][len(dataM["Occurence"])-prediction:].iloc[i])**2
+        s=np.sqrt(s/(prediction*dataM["Occurence"][len(dataM["Occurence"])-prediction:].max()))
+        rmse_pred=s
+        #XXX attention, j'ai essayé de normalisé
+        
         plt.title('RMSE: %.4f'% rmse)
         plt.savefig(save_path+'Model_Prediction.png')
         plt.close()
         with open(save_path+"Results.csv","a",newline="") as file:
             spamwriter=csv.writer(file,delimiter=";")
-            spamwriter.writerow(["rmse"])        
-            spamwriter.writerow([str(rmse)])
+            spamwriter.writerow(["rmse","rmse_pred"])        
+            spamwriter.writerow([rmse,s]) #TODO bug avec rmse_pred actuellement
         
         with open(save_path+"Results_model.csv","w",newline="") as file:
             spamwriter=csv.writer(file,delimiter=";")
@@ -391,7 +416,10 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
         
         
     elif (d==2):
-        predictions_ARIMA_log = originalScaleOrder2(predictions_ARIMA_diff)
+        #predictions_ARIMA_log = originalScaleOrder2(predictions_ARIMA_diff)
+        predictions_ARIMA_diff_cumsum = predictions_ARIMA_diff.cumsum()
+        predictions_ARIMA_log = pd.Series(ts_log.iloc[0], index=predictions_ARIMA_diff_cumsum.index) #à changer quand on met la prédiction future ? possible ?
+        predictions_ARIMA_log = predictions_ARIMA_log.add(predictions_ARIMA_diff_cumsum,fill_value=0)
     
         predictions_ARIMA = trans_inv(predictions_ARIMA_log) #np.exp(predictions_ARIMA_log)
         
@@ -420,11 +448,12 @@ def arimaModel(dataM,save_path,transformation,kpss=True):
     #print(full_prediction)
     #print(predictions_ARIMA_log)
     
-    return rss,rmse,flag,met,d,p,q,p_brut,q_brut
+    return rss,rmse,rss_pred,rmse_pred,flag,met,d,p,q,p_brut,q_brut
 
 
 # In[3]:
-
+    
+#Run on all states for the chosen names or inverse
 print("Do you want to analyse some names or some states ?(n/s)")
 to_analyse=input()
 if to_analyse=="n":
@@ -453,9 +482,10 @@ elif to_analyse=="s":
 else:
     raise ValueError("Wrong input.")
 
-#Run on all states for the chosen names
 rss_list=[]
 rmse_list=[]
+rss_pred_list=[]
+rmse_pred_list=[]
 total_count=0
 c_notStationary=0
 c_correction=0
@@ -464,13 +494,17 @@ transformation="log" #sqrt marche moyennement que pour John TX
 time= datetime.datetime.now()
 main_path="../results_arima/{}/".format(time.strftime("%Y-%m-%d-%H-%M"))
 if not os.path.exists(main_path):
-   os.mkdir(main_path)
+    os.mkdir(main_path)
 
 with open(main_path+"main_results.csv","a",newline="") as file:
-   spamwriter=csv.writer(file,delimiter=";")
-   spamwriter.writerow(["name","state","gender","rss","rmse","transformation","fit_method","differentiation order","p","q","p_brut","q_brut"])  
+    spamwriter=csv.writer(file,delimiter=";")
+    spamwriter.writerow(["name","state","gender","rss","rmse","rss_pred","rmse_pred","transformation","fit_method","differentiation order","p","q","p_brut","q_brut"])  
 for name in name_list:
-   for state in state_list[:states_number]:
+    rss_name=[]
+    rss_name_pred=[]
+    rmse_name=[]
+    rmse_name_pred=[]
+    for state in state_list[:states_number]:
        print("{} - {}".format(name,state))
        data=bf.get_year(state,name)
        #for gender in gender_list:     
@@ -501,9 +535,15 @@ for name in name_list:
            plt.close()
            
            try:
-               rss,rmse,flag,met,d,p,q,p_brut,q_brut=arimaModel(dataM,save_path,transformation,kpss=False)
+               rss,rmse,rss_pred,rmse_pred,flag,met,d,p,q,p_brut,q_brut=arimaModel(dataM,save_path,transformation,kpss=False)
                rss_list.append(rss)
+               rss_name.append(rss)
+               rss_name_pred.append(rss_pred)
+               rss_pred_list.append(rss_pred)
+               rmse_pred_list.append(rmse_pred)
+               rmse_name_pred.append(rmse_pred)
                rmse_list.append(rmse)
+               rmse_name.append(rmse)
                if flag==2:
                    c_correction+=1
                elif flag==3:
@@ -519,26 +559,32 @@ for name in name_list:
            
            with open(main_path+"main_results.csv","a",newline="") as file:
                spamwriter=csv.writer(file,delimiter=";")     
-               spamwriter.writerow([name,state,gender,rss,rmse,transformation,met,d,p,q,p_brut,q_brut])
+               spamwriter.writerow([name,state,gender,rss,rmse,rss_pred,rmse_pred,transformation,met,d,p,q,p_brut,q_brut])
                
+    with open(main_path+"main_results.csv","a",newline="") as file:
+       spamwriter=csv.writer(file,delimiter=";")
+       spamwriter.writerow(["","","","mean_rss_name","mean_rmse_name","mean_rss_name_pred","mean_rmse_name_pred"])
+       spamwriter.writerow(["","","",np.mean(rss_name),np.mean(rmse_name),np.mean(rss_name_pred),np.mean(rmse_name_pred)])
+       spamwriter.writerow([])
+       
 rmse_nan=pd.Series(rmse_list)
 
 with open(main_path+"main_results.csv","a",newline="") as file:
    spamwriter=csv.writer(file,delimiter=";")    
-   spamwriter.writerow(["countTotal","count_corrected","count_notStationary","count_brut","mean_rss","nb_nan","mean_rmse"])
-   spamwriter.writerow([str(total_count),str(c_correction),str(c_notStationary),str(c_brut),str(np.mean(rss_list)),str(rmse_nan.isna().sum()),str(np.mean(rmse_nan))])
+   spamwriter.writerow(["countTotal","count_corrected","count_notStationary","count_brut","mean_rss","nb_nan","mean_rmse","mean_rss_pred","mean_rmse_pred"])
+   spamwriter.writerow([total_count,c_correction,c_notStationary,c_brut,np.mean(rss_list),rmse_nan.isna().sum(),np.mean(rmse_nan),np.mean(rss_pred_list),np.mean(rmse_pred_list)])
 print("Total eval: {},  nb of corr of q: {},    nb of not starionary ts: {},  nb model: {},    nb brut better: {}".format(str(total_count),str(c_correction),str(c_notStationary),str(total_count-c_notStationary),str(c_brut)))
 print("Duration: {}".format(str(datetime.datetime.now()-time)))
 
-# name="John"
-# state="KS"
-# gender="M"
-# transformation="log"
-# data=bf.get_year(state,name)
-# dataM=data[data["Gender"]==gender]
-# save_path='../results_arima/{}-{}-{}-{}/'.format(state,name,gender,datetime.datetime.now().strftime("%d-%H-%M"))
-# if not os.path.exists(save_path):
-#     os.mkdir(save_path)
-# arimaModel(dataM,save_path,transformation,kpss=False)
+#name="John"
+#state="CA"
+#gender="M"
+#transformation="log"
+#data=bf.get_year(state,name)
+#dataM=data[data["Gender"]==gender]
+#save_path='../results_arima/{}-{}-{}-{}/'.format(state,name,gender,datetime.datetime.now().strftime("%d-%H-%M"))
+#if not os.path.exists(save_path):
+#    os.mkdir(save_path)
+#arimaModel(dataM,save_path,transformation,kpss=False)
 
 #RQ : ne marche pas quand les valeurs sont plus faibles. ex occurence qui est <2000 au max.
